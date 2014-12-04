@@ -56,6 +56,7 @@ class WebServerWidget:
     self.observerTags = []
     self.guiMessages = True
     self.consoleMessages = True
+    self.sliceWidgets = dict()
 
     if not parent:
       self.parent = slicer.qMRMLWidget()
@@ -140,7 +141,7 @@ class WebServerWidget:
     except AttributeError:
       # can happen if logic failed to load
       pass
-
+      
     filePath = slicer.modules.webserver.path
     p = os.path.dirname(filePath)
     if not sys.path.__contains__(p):
@@ -190,7 +191,8 @@ class WebServerWidget:
 #
 
 class SlicerRequestHandler(SimpleHTTPRequestHandler):
-
+  sliceWidgets = dict()
+  
   def start_response(self, status, response_headers):
     self.send_response(status)
     for keyword,value in response_headers:
@@ -267,14 +269,22 @@ class SlicerRequestHandler(SimpleHTTPRequestHandler):
         response_headers += [('Content-Type','text/plain')]
       elif ACTION == "preset":
         response_headers += [('Content-Type','text/plain')]
+      elif ACTION == "createNewSliceWidgets":
+        response_headers += [('Content-Type','text/plain')]        
       elif ACTION == "mrml":
         response_headers += [('Content-Type','application/json')]
+      elif ACTION == "volumeIDs":
+        response_headers += [('Content-Type','application/json')]        
       elif ACTION == "scene":
         response_headers += [('Content-Type','application/json')]
       elif ACTION == "timeimage":
         response_headers += [('Content-Type','image/png')]
+      elif ACTION == "imageSlice":
+        response_headers += [('Content-Type','image/png')]        
       elif ACTION == "slice":
         response_headers += [('Content-Type','image/png')]
+      elif ACTION == "offset":
+        response_headers += [('Content-Type','text/plain')]        
       elif ACTION == "threeD":
         response_headers += [('Content-Type','image/png')]
       elif ACTION == "transform":
@@ -380,15 +390,27 @@ class SlicerRequestHandler(SimpleHTTPRequestHandler):
         return (self.preset(cmd))
       if cmd.find('/timeimage') == 0:
         return (self.timeimage())
+      if cmd.find('/createNewSliceWidgets') == 0:
+        self.logMessage ("got request to update slice widgets")
+        return (self.createNewSliceWidgets(cmd))
       if cmd.find('/slice') == 0:
         self.logMessage ("got request for slice ("+cmd+")")
         return (self.slice(cmd))
+      if cmd.find('/offset') == 0:
+        self.logMessage ("got request for slice offset ("+cmd+")")
+        return (self.sliceOffset(cmd))        
+      if cmd.find('/imageSlice') == 0:
+        self.logMessage ("got request for image slice ("+cmd+")")
+        return (self.imageSlice(cmd))        
       if cmd.find('/threeD') == 0:
         self.logMessage ("got request for threeD ("+cmd+")")
         return (self.threeD(cmd))
       if cmd.find('/mrml') == 0:
         self.logMessage ("got request for mrml")
         return (self.mrml(cmd))
+      if cmd.find('/volumeIDs') == 0:
+        self.logMessage ("got request for mrml Volume IDs")
+        return (self.mrmlVolumeIDs(cmd))        
       if cmd.find('/transform') == 0:
         self.logMessage ("got request for transform")
         return (self.transform(cmd))
@@ -628,16 +650,110 @@ space origin: (86.644897460937486,-133.92860412597656,116.78569793701172)
     nrrdData.write(volumeArray.data)
     return nrrdData.getvalue()
 
-
   def mrml(self,cmd):
     import slicer
     return ( json.dumps( slicer.util.getNodes('*').keys() ) )
+    
+  def mrmlVolumeIDs(self,cmd):
+    import slicer
+    col = slicer.mrmlScene.GetNodesByClass("vtkMRMLScalarVolumeNode")
+    IDs = []
+    for i in range(0,col.GetNumberOfItems()):
+      IDs.append(col.GetItemAsObject(i).GetID())
+    return ( json.dumps( IDs ) )
 
+  def createNewSliceWidgets(self,cmd):
+    import qt
+    import slicer
+    
+    addedIDs = ""
+    
+    col = slicer.mrmlScene.GetNodesByClass("vtkMRMLScalarVolumeNode")
+    for i in range(0,col.GetNumberOfItems()):
+      ID = col.GetItemAsObject(i).GetID()
+      if ID not in SlicerRequestHandler.sliceWidgets:
+        #create slice widget
+        sliceWidget = slicer.qMRMLSliceWidget()
+        sliceWidget.sliceController().sliceViewName = ID
+        sliceWidget.setMRMLScene(slicer.mrmlScene)
+        sliceWidget.setGeometry(qt.QRect(0,0,700,700))
+        compNode = sliceWidget.sliceLogic().GetSliceCompositeNode()
+        compNode.SetBackgroundVolumeID(ID)
+        
+        #sliceWidget.show()
+        SlicerRequestHandler.sliceWidgets[ID] = sliceWidget
+        addedIDs += (", " + ID)
+        #sliceWidget.hide()
+        
+    return addedIDs
+    
   def slice(self,cmd):
+
+    import qt
+    import slicer
+    p = urlparse.urlparse(cmd)
+    q = urlparse.parse_qs(p.query)
+    
+    layoutManager = slicer.app.layoutManager()
+    
+    try:
+      ID = str(q['ID'][0].strip())
+    except KeyError:
+      ID = 'vtkMRMLScalarVolumeNode2'
+      
+    #if not view in options:
+    #sliceWidget = layoutManager.sliceWidget(view.capitalize())
+    #sliceLogic = sliceWidget.sliceLogic()
+    
+    sliceWidget = SlicerRequestHandler.sliceWidgets[ID]
+    sliceWidget.show()
+    # create widget snapshot and png
+    widgetPixmap = qt.QPixmap.grabWidget(sliceWidget)
+    sliceWidget.hide()
+    byteArray = qt.QByteArray()
+    buffer = qt.QBuffer(byteArray)
+    buffer.open(qt.QIODevice.ReadWrite)
+    widgetPixmap.save(buffer, 'PNG')
+
+    string_io = StringIO.StringIO(byteArray.data())
+   
+    pngData = string_io.getvalue()
+    
+    self.logMessage('returning an image of %d length' % len(pngData))
+    
+    return pngData
+    
+  def sliceOffset(self,cmd):
+
+    import qt
+    import slicer
+    p = urlparse.urlparse(cmd)
+    q = urlparse.parse_qs(p.query)
+    
+    layoutManager = slicer.app.layoutManager()
+    
+    try:
+      ID = str(q['ID'][0].strip())
+    except KeyError:
+      ID = 'vtkMRMLScalarVolumeNode2'
+      
+    try:
+      offset = int(q['offset'][0].strip())
+    except KeyError:
+      offset = 0
+      
+    sliceWidget = SlicerRequestHandler.sliceWidgets[ID]
+    sliceNode = sliceWidget.mrmlSliceNode()
+    
+    sliceNode.SetSliceOffset(sliceNode.GetSliceOffset() + offset)
+    
+    return (ID + " offset by " + str(offset))
+    
+    
+  def imageSlice(self,cmd):
     """return a png for a slice view.
     Args:
-     view={red, yellow, green}
-     scrollTo= 0 to 1 for slice position within volume
+     id=volumeID
      offset=mm offset relative to slice origin (position of slice slider)
      size=pixel size of output png
     """
@@ -647,34 +763,21 @@ space origin: (86.644897460937486,-133.92860412597656,116.78569793701172)
     import vtk.util.numpy_support
     import numpy
     import slicer
-
+    
     p = urlparse.urlparse(cmd)
     q = urlparse.parse_qs(p.query)
     try:
-      view = q['view'][0].strip().lower()
+      id = q['id'][0].strip()
     except KeyError:
-      view = 'red'
-    options = ['red', 'yellow', 'green']
-    if not view in options:
-      view = 'red'
-    layoutManager = slicer.app.layoutManager()
-    sliceLogic = layoutManager.sliceWidget(view.capitalize()).sliceLogic()
+      id = 'vtkMRMLScalarVolumeNode2'
     try:
       mode = str(q['mode'][0].strip())
     except (KeyError, ValueError):
       mode = None
     try:
-      offset = float(q['offset'][0].strip())
+      offset = int(q['offset'][0].strip())
     except (KeyError, ValueError):
-      offset = None
-    try:
-      copySliceGeometryFrom = q['copySliceGeometryFrom'][0].strip()
-    except (KeyError, ValueError):
-      copySliceGeometryFrom = None
-    try:
-      scrollTo = float(q['scrollTo'][0].strip())
-    except (KeyError, ValueError):
-      scrollTo = None
+      offset = 10
     try:
       size = int(q['size'][0].strip())
     except (KeyError, ValueError):
@@ -684,30 +787,9 @@ space origin: (86.644897460937486,-133.92860412597656,116.78569793701172)
     except (KeyError, ValueError):
       orientation = None
 
-    offsetKey = 'offset.'+view
-    #if mode == 'start' or not self.interactionState.has_key(offsetKey):
-      #self.interactionState[offsetKey] = sliceLogic.GetSliceOffset()
-
-    if scrollTo:
-      volumeNode = sliceLogic.GetBackgroundLayer().GetVolumeNode()
-      bounds = [0,] * 6
-      sliceLogic.GetVolumeSliceBounds(volumeNode,bounds)
-      sliceLogic.SetSliceOffset(bounds[4] + (scrollTo * (bounds[5] - bounds[4])))
-    if offset:
-      #startOffset = self.interactionState[offsetKey]
-      sliceLogic.SetSliceOffset(startOffset + offset)
-    if copySliceGeometryFrom:
-      otherSliceLogic = layoutManager.sliceWidget(copySliceGeometryFrom.capitalize()).sliceLogic()
-      otherSliceNode = otherSliceLogic.GetSliceNode()
-      sliceNode = sliceLogic.GetSliceNode()
-      # technique from vtkMRMLSliceLinkLogic (TODO: should be exposed as method)
-      sliceNode.GetSliceToRAS().DeepCopy( otherSliceNode.GetSliceToRAS() )
-      fov = sliceNode.GetFieldOfView()
-      otherFOV = otherSliceNode.GetFieldOfView()
-      sliceNode.SetFieldOfView( otherFOV[0],
-                                otherFOV[0] * fov[1] / fov[0],
-                                fov[2] );
-
+    print id
+    volumeNode = slicer.mrmlScene.GetNodeByID(id)
+    
     if orientation:
       sliceNode = sliceLogic.GetSliceNode()
       if orientation.lower() == 'axial':
@@ -717,8 +799,26 @@ space origin: (86.644897460937486,-133.92860412597656,116.78569793701172)
       if orientation.lower() == 'coronal':
         sliceNode.SetOrientationToCoronal()
 
-    imageData = sliceLogic.GetExtractModelTexture().GetOutput()
-    pngData = self.vtkImageDataToPNG(imageData,method=pngMethod)
+        
+    #grab slice from image data    
+    vtkImage = volumeNode.GetImageData()
+    vtkImageSlice = vtk.vtkImageData()
+
+    vtkImageSlice.SetSpacing(vtkImage.GetSpacing())
+    vtkImageSlice.SetExtent(vtkImage.GetExtent()[0], vtkImage.GetExtent()[1], vtkImage.GetExtent()[2], vtkImage.GetExtent()[3], 0, 0)
+    vtkImageSlice.AllocateScalars(vtk.VTK_UNSIGNED_CHAR, 3)
+
+    kSlice = offset
+    if (vtkImage.GetDimensions()[2] < 10):
+      kSlice = vtkImage.GetDimensions()[2]/2
+    
+    for i in range(0, vtkImage.GetDimensions()[0]):
+      for j in range(0, vtkImage.GetDimensions()[1]):
+        vtkImageSlice.SetScalarComponentFromFloat(i,j,0,0, vtkImage.GetScalarComponentAsFloat(i,j,kSlice,0))
+        vtkImageSlice.SetScalarComponentFromFloat(i,j,0,1, vtkImage.GetScalarComponentAsFloat(i,j,kSlice,0))
+        vtkImageSlice.SetScalarComponentFromFloat(i,j,0,2, vtkImage.GetScalarComponentAsFloat(i,j,kSlice,0))
+        
+    pngData = self.vtkImageDataToPNG(vtkImageSlice,method=pngMethod)
     self.logMessage('returning an image of %d length' % len(pngData))
     return pngData
 
