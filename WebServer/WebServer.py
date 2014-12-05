@@ -679,8 +679,7 @@ space origin: (86.644897460937486,-133.92860412597656,116.78569793701172)
         sliceWidget.setGeometry(qt.QRect(0,0,700,700))
         compNode = sliceWidget.sliceLogic().GetSliceCompositeNode()
         compNode.SetBackgroundVolumeID(ID)
-        
-        #sliceWidget.show()
+        sliceWidget.show()
         SlicerRequestHandler.sliceWidgets[ID] = sliceWidget
         addedIDs += (", " + ID)
         #sliceWidget.hide()
@@ -706,10 +705,10 @@ space origin: (86.644897460937486,-133.92860412597656,116.78569793701172)
     #sliceLogic = sliceWidget.sliceLogic()
     
     sliceWidget = SlicerRequestHandler.sliceWidgets[ID]
-    sliceWidget.show()
+    #sliceWidget.show()
     # create widget snapshot and png
     widgetPixmap = qt.QPixmap.grabWidget(sliceWidget)
-    sliceWidget.hide()
+    #sliceWidget.hide()
     byteArray = qt.QByteArray()
     buffer = qt.QBuffer(byteArray)
     buffer.open(qt.QIODevice.ReadWrite)
