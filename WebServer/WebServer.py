@@ -270,10 +270,16 @@ class SlicerRequestHandler(SimpleHTTPRequestHandler):
       elif ACTION == "preset":
         response_headers += [('Content-Type','text/plain')]
       elif ACTION == "createNewSliceWidgets":
-        response_headers += [('Content-Type','text/plain')]        
+        response_headers += [('Content-Type','text/plain')]
+      elif ACTION == "createNewSliceWidget":
+        response_headers += [('Content-Type','text/plain')]
       elif ACTION == "mrml":
         response_headers += [('Content-Type','application/json')]
       elif ACTION == "volumeIDs":
+        response_headers += [('Content-Type','application/json')]
+      elif ACTION == "modelIDs":
+        response_headers += [('Content-Type','application/json')]
+      elif ACTION == "transformIDs":
         response_headers += [('Content-Type','application/json')]        
       elif ACTION == "scene":
         response_headers += [('Content-Type','application/json')]
@@ -292,6 +298,8 @@ class SlicerRequestHandler(SimpleHTTPRequestHandler):
       elif ACTION == "volumeSelection":
         response_headers += [('Content-Type','text/plain')]
       elif ACTION == "volume":
+        response_headers += [('Content-Type','application/octet-stream')]
+      elif ACTION == "model":
         response_headers += [('Content-Type','application/octet-stream')]
       elif URL.query.endswith("png"):
         response_headers += [('Content-Type','image/png')]
@@ -390,9 +398,24 @@ class SlicerRequestHandler(SimpleHTTPRequestHandler):
         return (self.preset(cmd))
       if cmd.find('/timeimage') == 0:
         return (self.timeimage())
+      if cmd.find('/volumeIDs') == 0:
+        self.logMessage ("got request for mrml Volume IDs")
+        return (self.mrmlVolumeIDs(cmd))
+      if cmd.find('/modelIDs') == 0:
+        self.logMessage ("got request for mrml Model IDs")
+        return (self.mrmlModelIDs(cmd))
+      if cmd.find('/transformIDs') == 0:
+        self.logMessage ("got request for mrml Model IDs")
+        return (self.mrmlTransformModelIDs(cmd))        
       if cmd.find('/createNewSliceWidgets') == 0:
         self.logMessage ("got request to update slice widgets")
         return (self.createNewSliceWidgets(cmd))
+      if cmd.find('/createNewSliceWidget') == 0:
+        self.logMessage ("got request to add a slice widget")
+        return (self.createNewSliceWidget(cmd))
+      if cmd.find('/model') == 0:
+        self.logMessage ("got request to export a model")
+        return (self.model(cmd))
       if cmd.find('/slice') == 0:
         self.logMessage ("got request for slice ("+cmd+")")
         return (self.slice(cmd))
@@ -408,9 +431,6 @@ class SlicerRequestHandler(SimpleHTTPRequestHandler):
       if cmd.find('/mrml') == 0:
         self.logMessage ("got request for mrml")
         return (self.mrml(cmd))
-      if cmd.find('/volumeIDs') == 0:
-        self.logMessage ("got request for mrml Volume IDs")
-        return (self.mrmlVolumeIDs(cmd))        
       if cmd.find('/transform') == 0:
         self.logMessage ("got request for transform")
         return (self.transform(cmd))
@@ -648,6 +668,7 @@ space origin: (86.644897460937486,-133.92860412597656,116.78569793701172)
     nrrdData = StringIO.StringIO()
     nrrdData.write(nrrdHeader)
     nrrdData.write(volumeArray.data)
+    print nrrdData.getvalue()
     return nrrdData.getvalue()
 
   def mrml(self,cmd):
@@ -656,11 +677,29 @@ space origin: (86.644897460937486,-133.92860412597656,116.78569793701172)
     
   def mrmlVolumeIDs(self,cmd):
     import slicer
-    col = slicer.mrmlScene.GetNodesByClass("vtkMRMLScalarVolumeNode")
     IDs = []
+    col = slicer.mrmlScene.GetNodesByClass("vtkMRMLScalarVolumeNode")
     for i in range(0,col.GetNumberOfItems()):
       IDs.append(col.GetItemAsObject(i).GetID())
-    return ( json.dumps( IDs ) )
+    return ','.join(IDs)
+    
+  def mrmlModelIDs(self,cmd):
+    import slicer
+    IDs = []
+    col = slicer.mrmlScene.GetNodesByClass("vtkMRMLModelNode")
+    for i in range(0,col.GetNumberOfItems()):
+      if ("Volume Slice" not in col.GetItemAsObject(i).GetName()):
+      
+        IDs.append(col.GetItemAsObject(i).GetID())
+    return ','.join(IDs)
+    
+  def mrmlTransformModelIDs(self,cmd):
+    import slicer
+    IDs = []
+    col = slicer.mrmlScene.GetNodesByClass("vtkMRMLTransformDisplayNode")
+    for i in range(0,col.GetNumberOfItems()):
+      IDs.append(col.GetItemAsObject(i).GetID())
+    return ','.join(IDs)
 
   def createNewSliceWidgets(self,cmd):
     import qt
@@ -676,7 +715,7 @@ space origin: (86.644897460937486,-133.92860412597656,116.78569793701172)
         sliceWidget = slicer.qMRMLSliceWidget()
         sliceWidget.sliceController().sliceViewName = ID
         sliceWidget.setMRMLScene(slicer.mrmlScene)
-        sliceWidget.setGeometry(qt.QRect(0,0,700,700))
+        sliceWidget.setGeometry(qt.QRect(0,0,400,400))
         compNode = sliceWidget.sliceLogic().GetSliceCompositeNode()
         compNode.SetBackgroundVolumeID(ID)
         sliceWidget.show()
@@ -685,6 +724,67 @@ space origin: (86.644897460937486,-133.92860412597656,116.78569793701172)
         #sliceWidget.hide()
         
     return addedIDs
+    
+  def createNewSliceWidget(self,cmd):
+    import qt
+    import slicer
+    
+    p = urlparse.urlparse(cmd)
+    q = urlparse.parse_qs(p.query)
+    
+    try:
+      ID = str(q['ID'][0].strip())
+    except KeyError:
+      ID = 'vtkMRMLScalarVolumeNode2'
+    
+    if ID not in SlicerRequestHandler.sliceWidgets:
+      #create slice widget
+      sliceWidget = slicer.qMRMLSliceWidget()
+      sliceWidget.sliceController().sliceViewName = ID
+      sliceWidget.setMRMLScene(slicer.mrmlScene)
+      sliceWidget.setGeometry(qt.QRect(0,0,400,400))
+      compNode = sliceWidget.sliceLogic().GetSliceCompositeNode()
+      compNode.SetBackgroundVolumeID(ID)
+      sliceWidget.show()
+      SlicerRequestHandler.sliceWidgets[ID] = sliceWidget
+      addedIDs += (", " + ID)
+      #sliceWidget.hide()
+        
+    return "Created slice widget for " + ID
+    
+  def model(self,cmd):
+    import qt
+    import slicer
+    
+    p = urlparse.urlparse(cmd)
+    q = urlparse.parse_qs(p.query)
+    
+    try:
+      ID = str(q['ID'][0].strip())
+    except KeyError:
+      ID = 'vtkMRMLModelNode4'
+    
+    import slicer
+    node = slicer.util.getNode(ID)
+    
+    objWriter = vtk.vtkOBJWriter()
+    #objWriter.SetWriteToMemory(True)
+    objWriter.SetWriteToMemory(False)
+    objWriter.SetFileName('C:/Users/Frankie/PerkWorkFiles/' + ID +'.obj')
+    
+    if (node.GetClassName() == "vtkMRMLTransformDisplayNode"):
+      polyData = vtk.vtkPolyData()
+      (slicer.modules.transforms.logic()).GetVisualization3d(polyData, node, node.GetRegionNode())
+      objWriter.SetInputData(polyData)
+    elif (node.GetClassName() == "vtkMRMLModelNode"):
+      objWriter.SetInputData(node.GetPolyData())
+    objWriter.Update()
+    
+    #objData = StringIO.StringIO()
+    #objData.write(objWriter.GetResult())
+    #print objData.getvalue()
+    #return objWriter.GetResult()
+    return "nothing because I can't make it work so I'm using a temporary solution"
     
   def slice(self,cmd):
 
