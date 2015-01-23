@@ -729,6 +729,8 @@ space origin: (86.644897460937486,-133.92860412597656,116.78569793701172)
     import qt
     import slicer
     
+    addedIDs = ""
+	
     p = urlparse.urlparse(cmd)
     q = urlparse.parse_qs(p.query)
     
@@ -812,7 +814,7 @@ space origin: (86.644897460937486,-133.92860412597656,116.78569793701172)
     byteArray = qt.QByteArray()
     buffer = qt.QBuffer(byteArray)
     buffer.open(qt.QIODevice.ReadWrite)
-    widgetPixmap.save(buffer, 'PNG')
+    widgetPixmap.save(buffer, 'JPEG', 75)
 
     string_io = StringIO.StringIO(byteArray.data())
    

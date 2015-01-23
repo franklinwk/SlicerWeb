@@ -66,14 +66,28 @@ class SlicerRequestHandler(SimpleHTTPRequestHandler):
         response_headers += [('Content-Type','text/plain')]
       elif ACTION == "preset":
         response_headers += [('Content-Type','text/plain')]
+      elif ACTION == "createNewSliceWidgets":
+        response_headers += [('Content-Type','text/plain')]
+      elif ACTION == "createNewSliceWidget":
+        response_headers += [('Content-Type','text/plain')]
       elif ACTION == "mrml":
         response_headers += [('Content-Type','application/json')]
+      elif ACTION == "volumeIDs":
+        response_headers += [('Content-Type','application/json')]
+      elif ACTION == "modelIDs":
+        response_headers += [('Content-Type','application/json')]
+      elif ACTION == "transformIDs":
+        response_headers += [('Content-Type','application/json')]        
       elif ACTION == "scene":
         response_headers += [('Content-Type','application/json')]
       elif ACTION == "timeimage":
         response_headers += [('Content-Type','image/png')]
+      elif ACTION == "imageSlice":
+        response_headers += [('Content-Type','image/png')]        
       elif ACTION == "slice":
         response_headers += [('Content-Type','image/png')]
+      elif ACTION == "offset":
+        response_headers += [('Content-Type','text/plain')]        
       elif ACTION == "threeD":
         response_headers += [('Content-Type','image/png')]
       elif ACTION == "transform":
@@ -82,6 +96,8 @@ class SlicerRequestHandler(SimpleHTTPRequestHandler):
         response_headers += [('Content-Type','text/plain')]
       elif ACTION == "volume":
         response_headers += [('Content-Type','application/octet-stream')]
+      elif ACTION == "model":
+        response_headers += [('Content-Type','application/octet-stream')]
       elif URL.query.endswith("png"):
         response_headers += [('Content-Type','image/png')]
       else:
@@ -89,7 +105,6 @@ class SlicerRequestHandler(SimpleHTTPRequestHandler):
         # prevent other slicer connections from completing
         self.logMessage( 'WARNING: no matching action for:' + rest )
         response_headers += [('Content-Type','text/plain')]
-
       # FINALLY, write the "body" returned by Slicer as the response
       self.start_response(status, response_headers)
       self.wfile.write( body )
@@ -162,6 +177,8 @@ class SlicerHTTPServer(HTTPServer):
   # using the &time=xxx trick)
   def __init__(self, server_address=("",8070), RequestHandlerClass=SlicerRequestHandler, docroot='.', logFile=None):
     HTTPServer.__init__(self,server_address, RequestHandlerClass)
+    self.setblocking(1)
+    self.settimeout(500)
     self.docroot = docroot
     self.logFile = logFile
     # use this as a mutex on the stdio connection
