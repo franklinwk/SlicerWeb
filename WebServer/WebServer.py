@@ -290,6 +290,10 @@ class SlicerRequestHandler(SimpleHTTPRequestHandler):
       elif ACTION == "slice":
         response_headers += [('Content-Type','image/png')]
       elif ACTION == "offset":
+        response_headers += [('Content-Type','text/plain')]
+      elif ACTION == "level":
+        response_headers += [('Content-Type','text/plain')]
+      elif ACTION == "window":
         response_headers += [('Content-Type','text/plain')]        
       elif ACTION == "threeD":
         response_headers += [('Content-Type','image/png')]
@@ -421,7 +425,13 @@ class SlicerRequestHandler(SimpleHTTPRequestHandler):
         return (self.slice(cmd))
       if cmd.find('/offset') == 0:
         self.logMessage ("got request for slice offset ("+cmd+")")
-        return (self.sliceOffset(cmd))        
+        return (self.sliceOffset(cmd))
+      if cmd.find('/level') == 0:
+        self.logMessage ("got request for slice level ("+cmd+")")
+        return (self.sliceLevel(cmd))
+      if cmd.find('/window') == 0:
+        self.logMessage ("got request for slice window ("+cmd+")")
+        return (self.sliceWindow(cmd))
       if cmd.find('/imageSlice') == 0:
         self.logMessage ("got request for image slice ("+cmd+")")
         return (self.imageSlice(cmd))        
@@ -728,8 +738,6 @@ space origin: (86.644897460937486,-133.92860412597656,116.78569793701172)
   def createNewSliceWidget(self,cmd):
     import qt
     import slicer
-    
-    addedIDs = ""
 	
     p = urlparse.urlparse(cmd)
     q = urlparse.parse_qs(p.query)
@@ -749,7 +757,6 @@ space origin: (86.644897460937486,-133.92860412597656,116.78569793701172)
       compNode.SetBackgroundVolumeID(ID)
       sliceWidget.show()
       SlicerRequestHandler.sliceWidgets[ID] = sliceWidget
-      addedIDs += (", " + ID)
       #sliceWidget.hide()
         
     return "Created slice widget for " + ID
@@ -814,7 +821,7 @@ space origin: (86.644897460937486,-133.92860412597656,116.78569793701172)
     byteArray = qt.QByteArray()
     buffer = qt.QBuffer(byteArray)
     buffer.open(qt.QIODevice.ReadWrite)
-    widgetPixmap.save(buffer, 'JPEG', 75)
+    widgetPixmap.save(buffer, 'JPEG', 100)
 
     string_io = StringIO.StringIO(byteArray.data())
    
@@ -842,13 +849,72 @@ space origin: (86.644897460937486,-133.92860412597656,116.78569793701172)
       offset = int(q['offset'][0].strip())
     except KeyError:
       offset = 0
-      
+    
+
     sliceWidget = SlicerRequestHandler.sliceWidgets[ID]
     sliceNode = sliceWidget.mrmlSliceNode()
     
     sliceNode.SetSliceOffset(sliceNode.GetSliceOffset() + offset)
     
     return (ID + " offset by " + str(offset))
+    
+  def sliceLevel(self,cmd):
+
+    import qt
+    import slicer
+    p = urlparse.urlparse(cmd)
+    q = urlparse.parse_qs(p.query)
+    
+    layoutManager = slicer.app.layoutManager()
+    
+    try:
+      ID = str(q['ID'][0].strip())
+    except KeyError:
+      ID = 'vtkMRMLScalarVolumeNode2'
+      
+    try:
+      level = int(q['level'][0].strip())
+    except KeyError:
+      level = 0
+    
+
+    sliceWidget = SlicerRequestHandler.sliceWidgets[ID]
+    sliceCompNode = sliceWidget.mrmlSliceCompositeNode()
+    sliceVolumeDisplayNode = (slicer.util.getNode(sliceCompNode.GetBackgroundVolumeID())).GetVolumeDisplayNode()
+    sliceVolumeDisplayNode.SetAutoWindowLevel(0)    
+    print "LEVELVELVELVLEVLEVLEL:" + str(level)
+    sliceVolumeDisplayNode.SetLevel(sliceVolumeDisplayNode.GetLevel() + level)
+    
+    return (ID + " level change by " + str(level))
+    
+  def sliceWindow(self,cmd):
+
+    import qt
+    import slicer
+    p = urlparse.urlparse(cmd)
+    q = urlparse.parse_qs(p.query)
+    
+    layoutManager = slicer.app.layoutManager()
+    
+    try:
+      ID = str(q['ID'][0].strip())
+    except KeyError:
+      ID = 'vtkMRMLScalarVolumeNode2'
+      
+    try:
+      window = int(q['window'][0].strip())
+    except KeyError:
+      window = 0
+    
+
+    sliceWidget = SlicerRequestHandler.sliceWidgets[ID]
+    sliceCompNode = sliceWidget.mrmlSliceCompositeNode()
+    sliceVolumeDisplayNode = (slicer.util.getNode(sliceCompNode.GetBackgroundVolumeID())).GetVolumeDisplayNode()
+    sliceVolumeDisplayNode.SetAutoWindowLevel(0)
+    
+    sliceVolumeDisplayNode.SetWindow(sliceVolumeDisplayNode.GetWindow() + window)
+    
+    return (ID + " window change by " + str(window))
     
     
   def imageSlice(self,cmd):
@@ -1118,6 +1184,7 @@ class SlicerHTTPServer(HTTPServer):
       try:
         s = socket.socket( socket.AF_INET, socket.SOCK_STREAM )
         s.setsockopt( socket.SOL_SOCKET, socket.SO_REUSEADDR, 1 )
+        #s.setblocking(1)
         s.bind( ( "", port ) )
       except socket.error, e:
         portFree = False
