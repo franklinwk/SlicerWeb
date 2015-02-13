@@ -54,8 +54,8 @@ class WebServerWidget:
 
   def __init__(self, parent=None):
     self.observerTags = []
-    self.guiMessages = True
-    self.consoleMessages = True
+    self.guiMessages = False
+    self.consoleMessages = False
     self.sliceWidgets = dict()
 
     if not parent:
@@ -294,7 +294,9 @@ class SlicerRequestHandler(SimpleHTTPRequestHandler):
       elif ACTION == "level":
         response_headers += [('Content-Type','text/plain')]
       elif ACTION == "window":
-        response_headers += [('Content-Type','text/plain')]        
+        response_headers += [('Content-Type','text/plain')]
+      elif ACTION == "zoom":
+        response_headers += [('Content-Type','text/plain')]
       elif ACTION == "threeD":
         response_headers += [('Content-Type','image/png')]
       elif ACTION == "transform":
@@ -349,6 +351,7 @@ class SlicerRequestHandler(SimpleHTTPRequestHandler):
       writer = vtk.vtkPNGWriter()
       writer.SetWriteToMemory(True)
       writer.SetInputDataObject(imageData)
+      writer.SetCompressionLevel(0)
       writer.Write()
       result = writer.GetResult()
       pngArray = vtk.util.numpy_support.vtk_to_numpy(result)
@@ -432,6 +435,9 @@ class SlicerRequestHandler(SimpleHTTPRequestHandler):
       if cmd.find('/window') == 0:
         self.logMessage ("got request for slice window ("+cmd+")")
         return (self.sliceWindow(cmd))
+      if cmd.find('/zoom') == 0:
+        self.logMessage ("got request for slice zoom ("+cmd+")")
+        return (self.sliceZoom(cmd))        
       if cmd.find('/imageSlice') == 0:
         self.logMessage ("got request for image slice ("+cmd+")")
         return (self.imageSlice(cmd))        
@@ -678,7 +684,7 @@ space origin: (86.644897460937486,-133.92860412597656,116.78569793701172)
     nrrdData = StringIO.StringIO()
     nrrdData.write(nrrdHeader)
     nrrdData.write(volumeArray.data)
-    print nrrdData.getvalue()
+    
     return nrrdData.getvalue()
 
   def mrml(self,cmd):
@@ -711,29 +717,29 @@ space origin: (86.644897460937486,-133.92860412597656,116.78569793701172)
       IDs.append(col.GetItemAsObject(i).GetID())
     return ','.join(IDs)
 
-  def createNewSliceWidgets(self,cmd):
-    import qt
-    import slicer
+  # def createNewSliceWidgets(self,cmd):
+    # import qt
+    # import slicer
     
-    addedIDs = ""
+    # addedIDs = ""
     
-    col = slicer.mrmlScene.GetNodesByClass("vtkMRMLScalarVolumeNode")
-    for i in range(0,col.GetNumberOfItems()):
-      ID = col.GetItemAsObject(i).GetID()
-      if ID not in SlicerRequestHandler.sliceWidgets:
-        #create slice widget
-        sliceWidget = slicer.qMRMLSliceWidget()
-        sliceWidget.sliceController().sliceViewName = ID
-        sliceWidget.setMRMLScene(slicer.mrmlScene)
-        sliceWidget.setGeometry(qt.QRect(0,0,400,400))
-        compNode = sliceWidget.sliceLogic().GetSliceCompositeNode()
-        compNode.SetBackgroundVolumeID(ID)
-        sliceWidget.show()
-        SlicerRequestHandler.sliceWidgets[ID] = sliceWidget
-        addedIDs += (", " + ID)
-        #sliceWidget.hide()
-        
-    return addedIDs
+    # col = slicer.mrmlScene.GetNodesByClass("vtkMRMLScalarVolumeNode")
+    # for i in range(0,col.GetNumberOfItems()):
+      # ID = col.GetItemAsObject(i).GetID()
+      # if ID not in SlicerRequestHandler.sliceWidgets:
+        # #create slice widget
+        # sliceWidget = slicer.qMRMLSliceWidget()
+        # sliceWidget.sliceController().sliceViewName = ID
+        # sliceWidget.setMRMLScene(slicer.mrmlScene)
+        # sliceWidget.setGeometry(qt.QRect(0,0,400,400))
+        # compNode = sliceWidget.sliceLogic().GetSliceCompositeNode()
+        # compNode.SetBackgroundVolumeID(ID)
+        # sliceWidget.show()
+        # SlicerRequestHandler.sliceWidgets[ID] = sliceWidget
+        # addedIDs += (", " + ID)
+        # #sliceWidget.hide()   
+
+    # return addedIDs
     
   def createNewSliceWidget(self,cmd):
     import qt
@@ -748,17 +754,33 @@ space origin: (86.644897460937486,-133.92860412597656,116.78569793701172)
       ID = 'vtkMRMLScalarVolumeNode2'
     
     if ID not in SlicerRequestHandler.sliceWidgets:
+      #create slice node
+      sliceNode = slicer.vtkMRMLSliceNode()
+      sliceNode.SetName(ID + "SliceNode")
+      sliceNode.SetLayoutName(ID)
+      sliceNode.SetLayoutLabel("VR")
+      sliceNode.SetLayoutColor(1,0,0.93)
+    
       #create slice widget
-      sliceWidget = slicer.qMRMLSliceWidget()
-      sliceWidget.sliceController().sliceViewName = ID
-      sliceWidget.setMRMLScene(slicer.mrmlScene)
+      slicer.mrmlScene.AddNode(sliceNode)
+      sliceWidget = slicer.app.layoutManager().sliceWidget(ID)
+      sliceWidget.setWindowFlags(qt.Qt.Window)
+
       sliceWidget.setGeometry(qt.QRect(0,0,400,400))
+      sliceNode.SetDimensions(400,400,1)
       compNode = sliceWidget.sliceLogic().GetSliceCompositeNode()
       compNode.SetBackgroundVolumeID(ID)
       sliceWidget.show()
       SlicerRequestHandler.sliceWidgets[ID] = sliceWidget
+      
+      #sliceWidget.sliceLogic().StartSliceNodeInteraction(slicer.vtkMRMlSliceNode.ResetFieldofViewFlag)
+      sliceWidget.sliceLogic().FitSliceToAll()
+      sliceWidget.sliceLogic().FitSliceToAll()
+      sliceWidget.sliceLogic().FitSliceToAll()
+      #sliceNode.UpdateMatrices()
+      #sliceWidget.sliceLogic().EndSliceNodeInteraction()
       #sliceWidget.hide()
-        
+
     return "Created slice widget for " + ID
     
   def model(self,cmd):
@@ -853,8 +875,14 @@ space origin: (86.644897460937486,-133.92860412597656,116.78569793701172)
 
     sliceWidget = SlicerRequestHandler.sliceWidgets[ID]
     sliceNode = sliceWidget.mrmlSliceNode()
+    sliceLogic = sliceWidget.sliceLogic()
+    sliceBounds = [0,-1]*3
+    sliceLogic.GetSliceBounds(sliceBounds)
     
-    sliceNode.SetSliceOffset(sliceNode.GetSliceOffset() + offset)
+    newOffset = sliceNode.GetSliceOffset() + offset
+    
+    if (newOffset >= sliceBounds[4] and newOffset <= sliceBounds[5]):
+      sliceNode.SetSliceOffset(newOffset)
     
     return (ID + " offset by " + str(offset))
     
@@ -881,9 +909,15 @@ space origin: (86.644897460937486,-133.92860412597656,116.78569793701172)
     sliceWidget = SlicerRequestHandler.sliceWidgets[ID]
     sliceCompNode = sliceWidget.mrmlSliceCompositeNode()
     sliceVolumeDisplayNode = (slicer.util.getNode(sliceCompNode.GetBackgroundVolumeID())).GetVolumeDisplayNode()
-    sliceVolumeDisplayNode.SetAutoWindowLevel(0)    
-    print "LEVELVELVELVLEVLEVLEL:" + str(level)
-    sliceVolumeDisplayNode.SetLevel(sliceVolumeDisplayNode.GetLevel() + level)
+    
+    windowLevelMin = sliceVolumeDisplayNode.GetWindowLevelMin()
+    windowLevelMax = sliceVolumeDisplayNode.GetWindowLevelMax()
+    gain = (windowLevelMax - windowLevelMin) / 500.0
+    
+    newLevel = sliceVolumeDisplayNode.GetLevel() + (level * gain)
+    if (((newLevel > windowLevelMin) and (level < 0)) or ((newLevel < windowLevelMax) and (level > 0))):
+      sliceVolumeDisplayNode.SetAutoWindowLevel(0)
+      sliceVolumeDisplayNode.SetLevel(sliceVolumeDisplayNode.GetLevel() + level)    
     
     return (ID + " level change by " + str(level))
     
@@ -910,11 +944,64 @@ space origin: (86.644897460937486,-133.92860412597656,116.78569793701172)
     sliceWidget = SlicerRequestHandler.sliceWidgets[ID]
     sliceCompNode = sliceWidget.mrmlSliceCompositeNode()
     sliceVolumeDisplayNode = (slicer.util.getNode(sliceCompNode.GetBackgroundVolumeID())).GetVolumeDisplayNode()
+    
+    windowLevelMin = sliceVolumeDisplayNode.GetWindowLevelMin()
+    windowLevelMax = sliceVolumeDisplayNode.GetWindowLevelMax()
+    gain = (windowLevelMax - windowLevelMin) / 500.0
+    
+    newWindow = sliceVolumeDisplayNode.GetWindow() + (window * gain)
+    #if (((newWindow > windowLevelMin) and (window < 0)) or ((newWindow < windowLevelMax) and (window > 0))):
     sliceVolumeDisplayNode.SetAutoWindowLevel(0)
-    
     sliceVolumeDisplayNode.SetWindow(sliceVolumeDisplayNode.GetWindow() + window)
-    
+
     return (ID + " window change by " + str(window))
+    
+  def sliceZoom(self,cmd):
+
+    import qt
+    import slicer
+    p = urlparse.urlparse(cmd)
+    q = urlparse.parse_qs(p.query)
+    
+    layoutManager = slicer.app.layoutManager()
+    
+    try:
+      ID = str(q['ID'][0].strip())
+    except KeyError:
+      ID = 'vtkMRMLScalarVolumeNode2'
+      
+    try:
+      percent = int(q['percent'][0].strip()) / 100.0
+    except KeyError:
+      percent = 0
+    try:
+      x = float(q['x'][0].strip())
+      y = float(q['y'][0].strip())
+    except KeyError:
+      x = 0
+      y = 0      
+    
+    sliceWidget = SlicerRequestHandler.sliceWidgets[ID]
+    sliceNode = sliceWidget.mrmlSliceNode()
+    
+    sliceOrigin = sliceNode.GetXYZOrigin()
+    sliceDimensions = sliceNode.GetDimensions()
+    
+    # from -0.5 to 0.5 range in Unity to XY
+    xyX = x * sliceDimensions[0]
+    xyY = y * sliceDimensions[0]
+    
+    xyToSlice = sliceNode.GetXYToSlice()
+    xyToSlice.GetElement(0,0) * xyX
+    xyToSlice.GetElement(1,1) * xyY
+    
+    sliceNode.SetSliceOrigin(xyX, xyY, sliceOrigin[2])
+    
+    oldFOV = sliceNode.GetFieldOfView()
+    sliceNode.SetFieldOfView( oldFOV[0] * percent, oldFOV[1] * percent, oldFOV[2] )
+    sliceNode.UpdateMatrices()
+    
+    return (ID + " FOV percent change by " + str(percent))    
     
     
   def imageSlice(self,cmd):
@@ -954,7 +1041,6 @@ space origin: (86.644897460937486,-133.92860412597656,116.78569793701172)
     except (KeyError, ValueError):
       orientation = None
 
-    print id
     volumeNode = slicer.mrmlScene.GetNodeByID(id)
     
     if orientation:
@@ -1184,7 +1270,7 @@ class SlicerHTTPServer(HTTPServer):
       try:
         s = socket.socket( socket.AF_INET, socket.SOCK_STREAM )
         s.setsockopt( socket.SOL_SOCKET, socket.SO_REUSEADDR, 1 )
-        #s.setblocking(1)
+
         s.bind( ( "", port ) )
       except socket.error, e:
         portFree = False
