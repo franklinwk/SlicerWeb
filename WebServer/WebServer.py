@@ -288,7 +288,7 @@ class SlicerRequestHandler(SimpleHTTPRequestHandler):
       elif ACTION == "imageSlice":
         response_headers += [('Content-Type','image/png')]        
       elif ACTION == "slice":
-        response_headers += [('Content-Type','image/png')]
+        response_headers += [('Content-Type','image/jpeg')]
       elif ACTION == "offset":
         response_headers += [('Content-Type','text/plain')]
       elif ACTION == "level":
@@ -766,6 +766,7 @@ space origin: (86.644897460937486,-133.92860412597656,116.78569793701172)
       sliceWidget = slicer.app.layoutManager().sliceWidget(ID)
       sliceWidget.setWindowFlags(qt.Qt.Window)
 
+	  #create new window with the slice widget
       sliceWidget.setGeometry(qt.QRect(0,0,400,400))
       sliceNode.SetDimensions(400,400,1)
       compNode = sliceWidget.sliceLogic().GetSliceCompositeNode()
@@ -774,8 +775,6 @@ space origin: (86.644897460937486,-133.92860412597656,116.78569793701172)
       SlicerRequestHandler.sliceWidgets[ID] = sliceWidget
       
       #sliceWidget.sliceLogic().StartSliceNodeInteraction(slicer.vtkMRMlSliceNode.ResetFieldofViewFlag)
-      sliceWidget.sliceLogic().FitSliceToAll()
-      sliceWidget.sliceLogic().FitSliceToAll()
       sliceWidget.sliceLogic().FitSliceToAll()
       #sliceNode.UpdateMatrices()
       #sliceWidget.sliceLogic().EndSliceNodeInteraction()
@@ -843,7 +842,7 @@ space origin: (86.644897460937486,-133.92860412597656,116.78569793701172)
     byteArray = qt.QByteArray()
     buffer = qt.QBuffer(byteArray)
     buffer.open(qt.QIODevice.ReadWrite)
-    widgetPixmap.save(buffer, 'JPEG', 100)
+    widgetPixmap.save(buffer, 'JPEG', 50)
 
     string_io = StringIO.StringIO(byteArray.data())
    
@@ -914,7 +913,8 @@ space origin: (86.644897460937486,-133.92860412597656,116.78569793701172)
     windowLevelMax = sliceVolumeDisplayNode.GetWindowLevelMax()
     gain = (windowLevelMax - windowLevelMin) / 500.0
     
-    newLevel = sliceVolumeDisplayNode.GetLevel() + (level * gain)
+    #newLevel = sliceVolumeDisplayNode.GetLevel() + (level * gain)
+    newLevel = sliceVolumeDisplayNode.GetLevel() + (level)
     if (((newLevel > windowLevelMin) and (level < 0)) or ((newLevel < windowLevelMax) and (level > 0))):
       sliceVolumeDisplayNode.SetAutoWindowLevel(0)
       sliceVolumeDisplayNode.SetLevel(sliceVolumeDisplayNode.GetLevel() + level)    
@@ -949,7 +949,8 @@ space origin: (86.644897460937486,-133.92860412597656,116.78569793701172)
     windowLevelMax = sliceVolumeDisplayNode.GetWindowLevelMax()
     gain = (windowLevelMax - windowLevelMin) / 500.0
     
-    newWindow = sliceVolumeDisplayNode.GetWindow() + (window * gain)
+    #newWindow = sliceVolumeDisplayNode.GetWindow() + (window * gain)
+    newWindow = sliceVolumeDisplayNode.GetWindow() + (window)
     #if (((newWindow > windowLevelMin) and (window < 0)) or ((newWindow < windowLevelMax) and (window > 0))):
     sliceVolumeDisplayNode.SetAutoWindowLevel(0)
     sliceVolumeDisplayNode.SetWindow(sliceVolumeDisplayNode.GetWindow() + window)
