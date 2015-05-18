@@ -753,6 +753,8 @@ space origin: (86.644897460937486,-133.92860412597656,116.78569793701172)
     except KeyError:
       ID = 'vtkMRMLScalarVolumeNode2'
     
+    formattedDate = "N/A"
+	
     if ID not in SlicerRequestHandler.sliceWidgets:
       #create slice node
       sliceNode = slicer.vtkMRMLSliceNode()
@@ -779,8 +781,14 @@ space origin: (86.644897460937486,-133.92860412597656,116.78569793701172)
       #sliceNode.UpdateMatrices()
       #sliceWidget.sliceLogic().EndSliceNodeInteraction()
       #sliceWidget.hide()
+	  
+    uids = slicer.util.getNode(ID).GetAttribute("DICOM.instanceUIDs")
+    firstUid = uids.split(" ")[0]
 
-    return "Created slice widget for " + ID
+    rawDate = slicer.dicomDatabase.instanceValue(firstUid, "0008,0020").encode("ascii")
+    formattedDate = datetime.date(int(rawDate[0:4]), int(rawDate[4:6]), int(rawDate[6:8])).strftime('%B %d, %Y')    
+
+    return formattedDate
     
   def model(self,cmd):
     import qt
